@@ -1,0 +1,273 @@
+---
+title: "week 12"
+author: "Katja Jessen"
+date: "2025-03-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#The task for the week 12 assignment
+
+Taking this script as a point of departure, apply sentiment analysis on the Game of Thrones. You will find a pdf in the data folder. What are the most common meaningful words and what emotions do you expect will dominate this volume? Are there any terms that are similarly ambiguous to the 'confidence' above? 
+
+
+#What emotions do I expect to dominate in the GoT text:
+
+Since Game of Thrones is a quite harsh and brutal book series and tv show I expect that anger and negative emotions is dominant. But on the other side family, friends and alliences is a big part of the series. Therefore i also expect a more positive side of the text and perhaps trust as an emotion is dominant aswell. 
+
+#Are there any ambiguous words in the sentiment analysis?
+The most used word in the Game of Thrones text is "Lord" according the the analyses below. In the sentiment analysis "lord" is detected as different and opposite emotions. On the positive side it is detected as both positive and trust. On the other hand it is also detected as negative and disgust. This contradictory most mean that the sentiment behind the use of the word depends on the context which one can find by reading the text instead of the computer. 
+
+It is worth noting that the computer takes names into the analysis aswell and giving them a emotion. In this case the name "Bran" is shown as disgust, and the name "Stark" as both trust and negative. 
+
+
+
+
+```{r}
+library(tidyverse)
+library(here)
+
+# For text mining:
+
+library(pdftools)
+library(tidytext)
+library(textdata) 
+library(ggwordcloud)
+```
+
+
+```{r}
+#getting the Game of Thrones data and converting it to text
+
+got <- here("data","got.pdf")
+got
+got_text <- pdf_text(got)
+got_text
+```
+
+
+```{r}
+#wrangling the data - dataframe
+
+got_df <- data.frame(got_text) %>% 
+  mutate(text_full = str_split(got_text, pattern = '\n')) %>% 
+  unnest(text_full) %>% 
+  mutate(text_full = str_trim(text_full)) 
+
+got_df
+```
+
+```{r}
+#token --> wanting the individual words
+
+got_tokens <- got_df %>% 
+  unnest_tokens(word, text_full)
+
+got_tokens
+
+```
+
+```{r}
+#counting the words
+
+got_wc <- got_tokens %>% 
+  count(word) %>% 
+  arrange(-n)
+
+got_wc
+```
+
+```{r}
+#removing the stopwords
+
+View(stop_words)
+stop_words
+
+got_stop <- got_tokens %>% 
+  anti_join(stop_words) %>% 
+  select(-got_text)
+```
+
+```{r}
+#viewing of the list without the stopwords
+
+got_swc <- got_stop %>% 
+  count(word) %>% 
+  arrange(-n)
+
+got_swc
+```
+
+```{r}
+#taking out numbers in the text
+
+got_no_numeric <- got_stop %>% 
+  filter(is.na(as.numeric(word)))
+
+#finding the 100 most used words
+
+got_top100 <- got_no_numeric %>% 
+  count(word) %>% 
+  arrange(-n) %>% 
+  head(100)
+
+got_top100
+
+```
+
+
+```{r}
+#making a word cloud of the most frequent words
+
+got_cloud <- ggplot(data = got_top100, aes(label = word)) +
+  geom_text_wordcloud() +
+  theme_minimal()
+
+got_cloud
+
+#customizing the cloud
+
+ggplot(data = got_top100, aes(label = word, size = n)) +
+  geom_text_wordcloud_area(aes(color = n), shape = "diamond") +
+  scale_size_area(max_size = 12) +
+  scale_color_gradientn(colors = c("darkgreen","blue","red")) +
+  theme_minimal()
+```
+
+```{r}
+#downloading the positive and negatives words
+
+get_sentiments(lexicon = "afinn")
+
+#The positive words:
+afinn_pos <- get_sentiments("afinn") %>% 
+  filter(value %in% c(3,4,5))
+
+afinn_pos
+
+#The negative words
+get_sentiments(lexicon = "bing")
+get_sentiments(lexicon = "nrc")
+```
+
+```{r}
+#Joining the words from the GoT text and the "bing"
+
+got_afinn <- got_stop %>% 
+  inner_join(get_sentiments("afinn"))
+
+got_afinn
+
+#checking what words got excluded
+
+got_exclude <- got_stop %>% 
+  anti_join(get_sentiments("nrc"))
+
+got_exclude
+
+View(got_exclude)
+
+#Counting to find the most excluded words
+
+got_exclude_n <- got_exclude %>% 
+  count(word, sort = TRUE)
+
+head(got_exclude_n)
+```
+
+```{r}
+#Finding the sentiment rankings and plotting them
+
+got_afinn_hist <- got_afinn %>% 
+  count(value)
+
+#Plotting them 
+ggplot(data = got_afinn_hist, aes(x = value, y = n)) +
+  geom_col(aes(fill = value)) +
+  theme_bw()
+```
+
+```{r}
+#Filtering the most negative and positive words 
+
+got_afinn2 <- got_afinn %>% 
+  filter(value == -2)
+
+#Viewing them
+
+unique(got_afinn2$word)
+
+#Counting and plotting them
+
+got_afinn2_n <- got_afinn2 %>% 
+  count(word, sort = TRUE) %>% 
+  mutate(word = fct_reorder(factor(word), n))
+
+
+ggplot(data = got_afinn2_n, aes(x = word, y = n)) +
+  geom_col() +
+  coord_flip() +
+  theme_bw()
+
+
+```
+
+```{r}
+#Making a sentiment analysis
+
+got_nrc <- got_stop %>% 
+  inner_join(get_sentiments("nrc"))
+
+got_exclude <- got_stop %>% 
+  anti_join(get_sentiments("nrc"))
+
+View(got_exclude)
+
+#Counting to find the most excluded
+
+got_exclude_n <- got_exclude %>% 
+  count(word, sort = TRUE)
+
+head(got_exclude_n)
+
+#finding the counts 
+
+got_nrc_n <- got_nrc %>% 
+  count(sentiment, sort = TRUE)
+
+#Plotting them
+
+ggplot(data = got_nrc_n, aes(x = sentiment, y = n)) +
+  geom_col(aes(fill = sentiment))+
+  theme_bw()
+```
+
+```{r}
+#Showing the words and plotting them
+got_nrc_n5 <- got_nrc %>% 
+  count(word,sentiment, sort = TRUE) %>% 
+  group_by(sentiment) %>% 
+  top_n(5) %>% 
+  ungroup()
+
+got_nrc_gg <- ggplot(data = got_nrc_n5, aes(x = reorder(word,n), y = n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, ncol = 2, scales = "free") +
+  coord_flip() +
+  theme_minimal() +
+  labs(x = "Word", y = "count")
+```
+```{r}
+got_nrc_gg
+
+#saving the plot
+
+ggsave(plot = got_nrc_gg, 
+       here("figures","got_nrc_sentiment.png"), 
+       height = 8, 
+       width = 5)
+```
+
